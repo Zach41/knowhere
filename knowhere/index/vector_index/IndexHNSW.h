@@ -14,8 +14,8 @@
 #include <memory>
 
 #include "hnswlib/hnswlib/hnswlib.h"
-
 #include "knowhere/common/Exception.h"
+#include "knowhere/feder/HNSW.h"
 #include "knowhere/index/VecIndex.h"
 
 namespace knowhere {
@@ -48,6 +48,9 @@ class IndexHNSW : public VecIndex {
     DatasetPtr
     QueryByRange(const DatasetPtr&, const Config&, const faiss::BitsetView) override;
 
+    DatasetPtr
+    GetIndexMeta() override;
+
     int64_t
     Count() override;
 
@@ -61,6 +64,10 @@ class IndexHNSW : public VecIndex {
     void
     ClearStatistics() override;
 #endif
+
+ protected:
+    void
+    UpdateLevelLinkList(int32_t, feder::hnsw::HNSWMeta&, feder::IDSet&);
 
  private:
     std::shared_ptr<hnswlib::HierarchicalNSW<float>> index_;

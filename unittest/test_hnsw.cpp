@@ -13,6 +13,7 @@
 #include <random>
 
 #include "knowhere/common/Config.h"
+#include "knowhere/feder/HNSW.h"
 #include "knowhere/index/vector_index/ConfAdapterMgr.h"
 #include "knowhere/index/vector_index/IndexHNSW.h"
 #include "knowhere/index/vector_index/adapter/VectorAdapter.h"
@@ -193,4 +194,54 @@ TEST_P(HNSWTest, hnsw_range_search_ip) {
         test_range_search_ip(radius, nullptr);
         test_range_search_ip(radius, *bitset);
     }
+}
+
+TEST_P(HNSWTest, HNSW_get_meta) {
+    assert(!xb.empty());
+
+    index_->BuildAll(base_dataset, conf_);
+
+    auto result = index_->GetIndexMeta();
+
+    auto json_info = knowhere::GetDatasetJsonInfo(result);
+    auto json_id_set = knowhere::GetDatasetJsonIdSet(result);
+    //std::cout << json_info << std::endl;
+    std::cout << "json_info size = " << json_info.size() << std::endl;
+    std::cout << "json_id_set size = " << json_id_set.size() << std::endl;
+
+    knowhere::feder::hnsw::HNSWMeta meta;
+    knowhere::Config j1 = nlohmann::json::parse(json_info);
+    ASSERT_NO_THROW(nlohmann::from_json(j1, meta));
+
+    knowhere::feder::IDSet id_set;
+    knowhere::Config j2 = nlohmann::json::parse(json_id_set);
+    ASSERT_NO_THROW(nlohmann::from_json(j2, id_set));
+    std::cout << "id_set num = " << id_set.GetIDs().size() << std::endl;
+}
+
+TEST_P(HNSWTest, HNSW_trace_visit) {
+    assert(!xb.empty());
+
+    index_->BuildAll(base_dataset, conf_);
+
+    knowhere::SetMetaTraceVisit(conf_, true);
+    ASSERT_ANY_THROW(index_->Query(query_dataset, conf_, nullptr));
+
+    auto qd = knowhere::GenDataset(1, dim, xq.data());
+    auto result = index_->Query(qd, conf_, nullptr);
+
+    auto json_info = knowhere::GetDatasetJsonInfo(result);
+    auto json_id_set = knowhere::GetDatasetJsonIdSet(result);
+    //std::cout << json_info << std::endl;
+    std::cout << "json_info size = " << json_info.size() << std::endl;
+    std::cout << "json_id_set size = " << json_id_set.size() << std::endl;
+
+    knowhere::feder::hnsw::HNSWVisitInfo visit_info;
+    knowhere::Config j1 = nlohmann::json::parse(json_info);
+    ASSERT_NO_THROW(nlohmann::from_json(j1, visit_info));
+
+    knowhere::feder::IDSet id_set;
+    knowhere::Config j2 = nlohmann::json::parse(json_id_set);
+    ASSERT_NO_THROW(nlohmann::from_json(j2, id_set));
+    std::cout << "id_set num = " << id_set.GetIDs().size() << std::endl;
 }

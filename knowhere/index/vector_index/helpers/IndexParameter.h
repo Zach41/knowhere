@@ -37,6 +37,9 @@ constexpr const char* OUTPUT_TENSOR = "output_tensor";
 constexpr const char* DEVICE_ID = "gpu_id";
 constexpr const char* BUILD_INDEX_OMP_NUM = "build_index_omp_num";
 constexpr const char* QUERY_OMP_NUM = "query_omp_num";
+constexpr const char* TRACE_VISIT = "trace_visit";
+constexpr const char* JSON_INFO = "json_info";
+constexpr const char* JSON_ID_SET = "json_id_set";
 };  // namespace meta
 
 namespace indexparam {
@@ -144,6 +147,9 @@ DEFINE_CONFIG_SETTER(SetMetaBuildIndexOmpNum, meta::BUILD_INDEX_OMP_NUM, int64_t
 
 DEFINE_CONFIG_GETTER(GetMetaQueryOmpNum, meta::QUERY_OMP_NUM, int64_t)
 DEFINE_CONFIG_SETTER(SetMetaQueryOmpNum, meta::QUERY_OMP_NUM, int64_t)
+
+DEFINE_CONFIG_GETTER(GetMetaTraceVisit, meta::TRACE_VISIT, bool)
+DEFINE_CONFIG_SETTER(SetMetaTraceVisit, meta::TRACE_VISIT, bool)
 
 ///////////////////////////////////////////////////////////////////////////////
 // APIs to access indexparam

@@ -13,6 +13,7 @@
 #include <chrono>
 #include <queue>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -166,6 +167,12 @@ IndexHNSW::Query(const DatasetPtr& dataset_ptr, const Config& config, const fais
         }
     }
 
+    feder::hnsw::FederResult* feder_result = nullptr;
+    if (CheckKeyInConfig(config, meta::TRACE_VISIT) && GetMetaTraceVisit(config)) {
+        KNOWHERE_THROW_IF_NOT_MSG(rows == 1, "NQ must be 1 when Feder tracing");
+        feder_result = new feder::hnsw::FederResult();
+    }
+
     size_t ef = GetIndexParamEf(config);
     hnswlib::SearchParam param{ef};
     bool transform = (index_->metric_type_ == 1);  // InnerProduct: 1
@@ -178,10 +185,10 @@ IndexHNSW::Query(const DatasetPtr& dataset_ptr, const Config& config, const fais
         auto single_query = (float*)p_data + i * dim;
         std::priority_queue<std::pair<float, hnswlib::labeltype>> rst;
         if (STATISTICS_LEVEL >= 3) {
-            rst = index_->searchKnn(single_query, k, bitset, query_stats[i], &param);
+            rst = index_->searchKnn(single_query, k, bitset, query_stats[i], &param, feder_result);
         } else {
             auto dummy_stat = hnswlib::StatisticsInfo();
-            rst = index_->searchKnn(single_query, k, bitset, dummy_stat, &param);
+            rst = index_->searchKnn(single_query, k, bitset, dummy_stat, &param, feder_result);
         }
         size_t rst_size = rst.size();
 
@@ -230,6 +237,15 @@ IndexHNSW::Query(const DatasetPtr& dataset_ptr, const Config& config, const fais
 #endif
     // LOG_KNOWHERE_DEBUG_ << "IndexHNSW::Query finished, show statistics:";
     // LOG_KNOWHERE_DEBUG_ << GetStatistics()->ToString();
+
+    // set visit_info json string into result dataset
+    if (feder_result != nullptr) {
+        Config json_visit_info, json_id_set;
+        nlohmann::to_json(json_visit_info, feder_result->visit_info_);
+        nlohmann::to_json(json_id_set, feder_result->id_set_);
+        delete feder_result;
+        return GenResultDataset(p_id, p_dist, json_visit_info.dump(), json_id_set.dump());
+    }
 
     return GenResultDataset(p_id, p_dist);
 }
@@ -290,6 +306,30 @@ IndexHNSW::QueryByRange(const DatasetPtr& dataset,
     return GenResultDataset(p_id, p_dist, p_lims);
 }
 
+DatasetPtr
+IndexHNSW::GetIndexMeta() {
+    if (!index_) {
+        KNOWHERE_THROW_MSG("index not initialized or trained");
+    }
+
+    const int64_t hnsw_index_overview_levels = 3;
+    feder::hnsw::HNSWMeta meta(index_->ef_construction_, index_->M_, index_->cur_element_count, index_->maxlevel_,
+                               index_->enterpoint_node_, hnsw_index_overview_levels);
+    feder::IDSet id_set;
+
+    for (int i = 0; i < hnsw_index_overview_levels; i++) {
+        int64_t level = index_->maxlevel_ - i;
+        if (level <= 0) break;
+        meta.AddLevelLinkGraph(level);
+        UpdateLevelLinkList(level, meta, id_set);
+    }
+
+    Config json_meta, json_id_set;
+    nlohmann::to_json(json_meta, meta);
+    nlohmann::to_json(json_id_set, id_set);
+    return GenResultDataset(json_meta.dump(), json_id_set.dump());
+}
+
 int64_t
 IndexHNSW::Count() {
     if (!index_) {
@@ -324,5 +364,42 @@ IndexHNSW::ClearStatistics() {
     hnsw_stats->clear();
 }
 #endif
+
+void
+IndexHNSW::UpdateLevelLinkList(int32_t level, feder::hnsw::HNSWMeta& meta, feder::IDSet& id_set) {
+    KNOWHERE_THROW_IF_NOT_FMT((level > 0 && level <= index_->maxlevel_), "Illegal level %d", level);
+    if (index_->cur_element_count == 0) {
+        return;
+    }
+
+    hnswlib::tableint enter_point = index_->enterpoint_node_;
+
+    std::unordered_set<hnswlib::tableint> visited;
+    std::queue<hnswlib::tableint> q;
+    q.emplace(enter_point);
+
+    while (!q.empty()) {
+        auto curr_id = q.front();
+        q.pop();
+        visited.insert(curr_id);
+
+        auto data = index_->get_linklist(curr_id, level);
+        auto size = index_->getListCount(data);
+
+        hnswlib::tableint* datal = (hnswlib::tableint*)(data + 1);
+        std::vector<int64_t> links(size);
+        for (int i = 0; i < size; i++) {
+            hnswlib::tableint cand = datal[i];
+            KNOWHERE_THROW_IF_NOT_FMT((cand >= 0 && cand < index_->max_elements_), "Illegal id %d", cand);
+            links[i] = cand;
+            if (visited.find(cand) == visited.end()) {
+                q.emplace(cand);
+            }
+        }
+        meta.AddNodeInfo(level, curr_id, std::move(links));
+        id_set.Add(curr_id);
+        id_set.Add(links);
+    }
+}
 
 }  // namespace knowhere

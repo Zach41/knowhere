@@ -72,6 +72,11 @@ class VecIndex : public Index {
         KNOWHERE_THROW_MSG("QueryByRange not supported yet");
     }
 
+    virtual DatasetPtr
+    GetIndexMeta() {
+        KNOWHERE_THROW_MSG("GetIndexMeta not supported yet");
+    }
+
     virtual int64_t
     Dim() = 0;
 
